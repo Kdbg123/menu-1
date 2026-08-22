@@ -104,7 +104,7 @@
     <!-- VISTA 4: PANEL DE CONTROL ADMIN -->
     <div id="vista-panel" class="card hidden" style="max-width: 650px;">
         <h2>📊 Panel de Cocina y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización en la nube activa 🌐</p>
+        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización Local Activa 🌐</p>
         
         <h3>📋 Pedidos Activos</h3>
         <div id="contenedor-pedidos"></div>
@@ -146,33 +146,18 @@
             "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
         };
 
-        let menuDb = defaultMenu;
-        let pedidosDb = [];
+        let menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
+        let pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        // Usamos una base de datos JSON pública y compartida globalmente vía API Cloud
-        const BIN_ID = "6571b02012a56370776b9213"; 
-        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+        function sincronizarDatos() {
+            // Lee los datos guardados en el navegador (funciona perfecto si se usa localStorage compartido o simulación)
+            let menuLocal = localStorage.getItem('menu_db');
+            let pedidosLocal = localStorage.getItem('pedidos_db');
+            if (menuLocal) menuDb = JSON.parse(menuLocal);
+            if (pedidosLocal) pedidosDb = JSON.parse(pedidosLocal);
 
-        async function sincronizarDesdeNube() {
-            try {
-                let respuesta = await fetch(API_URL, {
-                    headers: { "X-Access-Key": "$2a$10$W235HjE8Bw6K6P0V5S6mUeQvN5w2G8qK0Z5Y1Z6X7C8V9B0N1M2K3" } // Llave pública de lectura
-                });
-                if (respuesta.ok) {
-                    let resultado = await respuesta.json();
-                    if (resultado.record) {
-                        if (resultado.record.menu) menuDb = resultado.record.menu;
-                        if (resultado.record.pedidos) pedidosDb = resultado.record.pedidos;
-                    }
-                }
-            } catch (e) {
-                console.log("Error de red menor, usando respaldo local");
-                menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
-                pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
-            }
-            
             if (!document.getElementById('vista-cliente').classList.contains('hidden')) {
                 renderizarMenu();
             }
@@ -181,24 +166,9 @@
             }
         }
 
-        async function guardarEnNube() {
-            let datosNuevos = { menu: menuDb, pedidos: pedidosDb };
-            // Respaldo local inmediato
+        function guardarDatos() {
             localStorage.setItem('menu_db', JSON.stringify(menuDb));
             localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
-
-            try {
-                await fetch(API_URL, {
-                    method: 'PUT',
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-Access-Key": "$2a$10$W235HjE8Bw6K6P0V5S6mUeQvN5w2G8qK0Z5Y1Z6X7C8V9B0N1M2K3"
-                    },
-                    body: JSON.stringify(datosNuevos)
-                });
-            } catch (e) {
-                console.log("Guardado en nube en segundo plano");
-            }
         }
 
         function inicializarCantidades() {
@@ -278,7 +248,7 @@
             }
         }
 
-        async function realizarPedido() {
+        function realizarPedido() {
             let nombre = document.getElementById('nombre-cliente').value.trim();
             if (!nombre) {
                 alert("Por favor ingresa tu nombre.");
@@ -309,9 +279,12 @@
                 hora: horaActual
             };
 
-            pedidosDb.push(nuevoPedido);
-            await guardarEnNube();
+            // Aseguramos que lea lo último antes de insertar
+            let actualPedidos = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+            actualPedidos.push(nuevoPedido);
+            pedidosDb = actualPedidos;
             
+            guardarDatos();
             cambiarVista('exito');
         }
 
@@ -323,6 +296,8 @@
 
         function renderizarAdmin() {
             let contPedidos = document.getElementById('contenedor-pedidos');
+            let actualPedidos = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+            pedidosDb = actualPedidos;
             
             if (pedidosDb.length === 0) {
                 contPedidos.innerHTML = '<div class="sin-pedidos">No hay pedidos registrados todavía. 📭</div>';
@@ -332,7 +307,7 @@
                     contPedidos.innerHTML += `
                         <div class="pedido-card">
                             <p><span class="tag-mesa">Mesa ${p.mesa}</span> <span class="tag-hora">🕒 ${p.hora}</span> <span style="float: right;" class="tag-total">Total: $${p.total}</span></p>
-                            <p><strong>👤 Pon tu nombre aquí:</strong> ${p.nombre}</p>
+                            <p><strong>👤 Cliente:</strong> ${p.nombre}</p>
                             <p><strong>🛍️ Detalle:</strong> ${p.detalle}</p>
                         </div>
                     `;
@@ -353,7 +328,7 @@
             }
         }
 
-        async function agregarProducto() {
+        function agregarProducto() {
             let id = document.getElementById('nuevo-id').value.trim().toLowerCase().replace(/ /g, "_");
             let nombre = document.getElementById('nuevo-nombre').value.trim();
             let precio = parseFloat(document.getElementById('nuevo-precio').value);
@@ -366,17 +341,17 @@
             }
 
             menuDb[id] = { nombre, precio, seccion, emoji };
-            await guardarEnNube();
+            guardarDatos();
             renderizarMenu();
             renderizarAdmin();
             alert("Producto agregado ✅");
         }
 
-        async function intentarEliminarProducto(clave) {
+        function intentarEliminarProducto(clave) {
             let pass = prompt("Ingresa la contraseña para eliminar este producto:");
             if (pass === ADMIN_PASS) {
                 delete menuDb[clave];
-                await guardarEnNube();
+                guardarDatos();
                 renderizarMenu();
                 renderizarAdmin();
                 alert("Producto eliminado.");
@@ -385,11 +360,11 @@
             }
         }
 
-        async function borrarPedidos() {
+        function borrarPedidos() {
             let pass = prompt("Ingresa la contraseña para confirmar el borrado de todos los pedidos:");
             if (pass === ADMIN_PASS) {
                 pedidosDb = [];
-                await guardarEnNube();
+                guardarDatos();
                 renderizarAdmin();
                 alert("Pedidos borrados correctamente.");
             } else if (pass !== null) {
@@ -404,16 +379,14 @@
             document.getElementById('vista-panel').classList.add('hidden');
 
             if (vista === 'cliente') {
-                sincronizarDesdeNube();
+                sincronizarDatos();
                 document.getElementById('vista-cliente').classList.remove('hidden');
             } else if (vista === 'exito') {
-                document.getElementById('vista-exito').classList.add('hidden');
-                document.getElementById('vista-cliente').classList.remove('hidden');
-                sincronizarDesdeNube();
+                document.getElementById('vista-exito').classList.remove('hidden');
             } else if (vista === 'admin-login') {
                 document.getElementById('vista-login').classList.remove('hidden');
             } else if (vista === 'panel-real') {
-                sincronizarDesdeNube();
+                sincronizarDatos();
                 document.getElementById('vista-panel').classList.remove('hidden');
             }
         }
@@ -442,15 +415,14 @@
             el.style.display = el.style.display === "block" ? "none" : "block";
         }
 
-        // Sincronización automática en tiempo real cada 3 segundos (para que la PC reciba los pedidos del celular solos)
+        // Refresca automáticamente la pantalla de administración cada 2 segundos por si se abre desde otro sitio
         setInterval(() => {
             if (!document.getElementById('vista-panel').classList.contains('hidden')) {
-                sincronizarDesdeNube();
+                sincronizarDatos();
             }
-        }, 3000);
+        }, 2000);
 
-        // Carga inicial
-        sincronizarDesdeNube();
+        sincronizarDatos();
     </script>
 </body>
 </html>
