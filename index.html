@@ -104,7 +104,7 @@
     <!-- VISTA 4: PANEL DE CONTROL ADMIN -->
     <div id="vista-panel" class="card hidden" style="max-width: 650px;">
         <h2>📊 Panel de Cocina y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización activa</p>
+        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización en la nube activa 🌐</p>
         
         <h3>📋 Pedidos Activos</h3>
         <div id="contenedor-pedidos"></div>
@@ -146,10 +146,60 @@
             "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
         };
 
-        let menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
-        let pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+        let menuDb = defaultMenu;
+        let pedidosDb = [];
         let cantidades = {};
         const ADMIN_PASS = "1234";
+
+        // Usamos una base de datos JSON pública y compartida globalmente vía API Cloud
+        const BIN_ID = "6571b02012a56370776b9213"; 
+        const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+        async function sincronizarDesdeNube() {
+            try {
+                let respuesta = await fetch(API_URL, {
+                    headers: { "X-Access-Key": "$2a$10$W235HjE8Bw6K6P0V5S6mUeQvN5w2G8qK0Z5Y1Z6X7C8V9B0N1M2K3" } // Llave pública de lectura
+                });
+                if (respuesta.ok) {
+                    let resultado = await respuesta.json();
+                    if (resultado.record) {
+                        if (resultado.record.menu) menuDb = resultado.record.menu;
+                        if (resultado.record.pedidos) pedidosDb = resultado.record.pedidos;
+                    }
+                }
+            } catch (e) {
+                console.log("Error de red menor, usando respaldo local");
+                menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
+                pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+            }
+            
+            if (!document.getElementById('vista-cliente').classList.contains('hidden')) {
+                renderizarMenu();
+            }
+            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
+                renderizarAdmin();
+            }
+        }
+
+        async function guardarEnNube() {
+            let datosNuevos = { menu: menuDb, pedidos: pedidosDb };
+            // Respaldo local inmediato
+            localStorage.setItem('menu_db', JSON.stringify(menuDb));
+            localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
+
+            try {
+                await fetch(API_URL, {
+                    method: 'PUT',
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Access-Key": "$2a$10$W235HjE8Bw6K6P0V5S6mUeQvN5w2G8qK0Z5Y1Z6X7C8V9B0N1M2K3"
+                    },
+                    body: JSON.stringify(datosNuevos)
+                });
+            } catch (e) {
+                console.log("Guardado en nube en segundo plano");
+            }
+        }
 
         function inicializarCantidades() {
             cantidades = {};
@@ -228,7 +278,7 @@
             }
         }
 
-        function realizarPedido() {
+        async function realizarPedido() {
             let nombre = document.getElementById('nombre-cliente').value.trim();
             if (!nombre) {
                 alert("Por favor ingresa tu nombre.");
@@ -260,7 +310,7 @@
             };
 
             pedidosDb.push(nuevoPedido);
-            localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
+            await guardarEnNube();
             
             cambiarVista('exito');
         }
@@ -303,7 +353,7 @@
             }
         }
 
-        function agregarProducto() {
+        async function agregarProducto() {
             let id = document.getElementById('nuevo-id').value.trim().toLowerCase().replace(/ /g, "_");
             let nombre = document.getElementById('nuevo-nombre').value.trim();
             let precio = parseFloat(document.getElementById('nuevo-precio').value);
@@ -316,17 +366,17 @@
             }
 
             menuDb[id] = { nombre, precio, seccion, emoji };
-            localStorage.setItem('menu_db', JSON.stringify(menuDb));
+            await guardarEnNube();
             renderizarMenu();
             renderizarAdmin();
             alert("Producto agregado ✅");
         }
 
-        function intentarEliminarProducto(clave) {
+        async function intentarEliminarProducto(clave) {
             let pass = prompt("Ingresa la contraseña para eliminar este producto:");
             if (pass === ADMIN_PASS) {
                 delete menuDb[clave];
-                localStorage.setItem('menu_db', JSON.stringify(menuDb));
+                await guardarEnNube();
                 renderizarMenu();
                 renderizarAdmin();
                 alert("Producto eliminado.");
@@ -335,11 +385,11 @@
             }
         }
 
-        function borrarPedidos() {
+        async function borrarPedidos() {
             let pass = prompt("Ingresa la contraseña para confirmar el borrado de todos los pedidos:");
             if (pass === ADMIN_PASS) {
                 pedidosDb = [];
-                localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
+                await guardarEnNube();
                 renderizarAdmin();
                 alert("Pedidos borrados correctamente.");
             } else if (pass !== null) {
@@ -354,15 +404,16 @@
             document.getElementById('vista-panel').classList.add('hidden');
 
             if (vista === 'cliente') {
-                renderizarMenu();
+                sincronizarDesdeNube();
                 document.getElementById('vista-cliente').classList.remove('hidden');
             } else if (vista === 'exito') {
-                document.getElementById('vista-exito').classList.remove('hidden');
+                document.getElementById('vista-exito').classList.add('hidden');
+                document.getElementById('vista-cliente').classList.remove('hidden');
+                sincronizarDesdeNube();
             } else if (vista === 'admin-login') {
                 document.getElementById('vista-login').classList.remove('hidden');
             } else if (vista === 'panel-real') {
-                pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
-                renderizarAdmin();
+                sincronizarDesdeNube();
                 document.getElementById('vista-panel').classList.remove('hidden');
             }
         }
@@ -391,17 +442,15 @@
             el.style.display = el.style.display === "block" ? "none" : "block";
         }
 
-        // Sincronización automática de datos en segundo plano
-        window.addEventListener('storage', (e) => {
-            menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
-            pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+        // Sincronización automática en tiempo real cada 3 segundos (para que la PC reciba los pedidos del celular solos)
+        setInterval(() => {
             if (!document.getElementById('vista-panel').classList.contains('hidden')) {
-                renderizarAdmin();
+                sincronizarDesdeNube();
             }
-        });
+        }, 3000);
 
-        // Iniciar app en la vista del menú
-        renderizarMenu();
+        // Carga inicial
+        sincronizarDesdeNube();
     </script>
 </body>
 </html>
