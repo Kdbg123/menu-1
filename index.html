@@ -73,9 +73,9 @@
     <!-- VISTA 1: MENÚ CLIENTE -->
     <div id="vista-cliente" class="card">
         <h2>🛒 Menú Interactivo</h2>
-        <div id="mesa-label" class="mesa-badge">📍 Servidor Conectado</div>
+        <div id="mesa-label" class="mesa-badge">📍 Servidor Principal Conectado</div>
         
-        <div id="contenedor-menu"></div>
+        <div id="contenedor-menu">Cargando menú...</div>
 
         <div class="total-box">
             Total: $<span id="total_texto">0.00</span>
@@ -155,27 +155,30 @@
             "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
         };
 
-        let menuDb = defaultMenu;
+        let menuDb = {};
         let pedidosDb = [];
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        // Escuchar cambios en el menú general de Firebase
+        // Inicializar y escuchar el menú desde Firebase
+        db.ref('menu').once('value').then((snapshot) => {
+            if (!snapshot.exists()) {
+                db.ref('menu').set(defaultMenu);
+            }
+        });
+
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
                 menuDb = data;
-            } else {
-                db.ref('menu').set(defaultMenu);
-                menuDb = defaultMenu;
-            }
-            renderizarMenu();
-            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
-                renderizarAdmin();
+                renderizarMenu();
+                if (!document.getElementById('vista-panel').classList.contains('hidden')) {
+                    renderizarAdmin();
+                }
             }
         });
 
-        // Escuchar los pedidos enviados desde cualquier dispositivo en tiempo real
+        // Escuchar los pedidos en tiempo real
         db.ref('pedidos').on('value', (snapshot) => {
             let data = snapshot.val();
             pedidosDb = [];
@@ -286,7 +289,6 @@
                 hora: horaActual
             };
 
-            // Enviar pedido a Firebase para que llegue al panel de administración
             db.ref('pedidos').push(nuevoPedido);
             cambiarVista('exito');
         }
@@ -321,8 +323,7 @@
                 contConfig.innerHTML += `
                     <div class="item-config">
                         <span>${menuDb[clave].emoji}</span>
-                        <input type="text" id="nombre_${clave}" value="${menuDb[clave].nombre}">
-                        <input type="number" step="0.01" id="precio_${clave}" value="${menuDb[clave].precio}" style="width:80px;">
+                        <span><strong>${menuDb[clave].nombre}</strong> ($${menuDb[clave].precio})</span>
                         <button type="button" class="btn-eliminar-item" onclick="intentarEliminarProducto('${clave}')">🗑️</button>
                     </div>
                 `;
