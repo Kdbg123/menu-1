@@ -73,7 +73,7 @@
     <!-- VISTA 1: MENÚ CLIENTE -->
     <div id="vista-cliente" class="card">
         <h2>🛒 Menú Interactivo</h2>
-        <div id="mesa-label" class="mesa-badge">Mesa: 1</div>
+        <div id="mesa-label" class="mesa-badge">📍 Servidor Conectado</div>
         
         <div id="contenedor-menu"></div>
 
@@ -91,7 +91,7 @@
     <!-- VISTA 2: PEDIDO EXITOSO -->
     <div id="vista-exito" class="card hidden" style="text-align: center;">
         <h2 style="color: #25d366;">¡Pedido Recibido! 🎉</h2>
-        <p>Tu selección ha sido enviada a cocina con éxito.</p>
+        <p>Tu selección ha sido enviada al servidor principal con éxito.</p>
         <button type="button" class="btn-enviar" onclick="reiniciarYVolver()">Volver al menú</button>
     </div>
 
@@ -147,7 +147,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        let mesaActual = 1;
         let defaultMenu = {
             "hamburguesa": {"nombre": "Hamburguesa Clásica", "precio": 5.00, "seccion": "Platos Principales", "emoji": "🍔"},
             "hotdog": {"nombre": "Hot Dog Especial", "precio": 3.50, "seccion": "Platos Principales", "emoji": "🌭"},
@@ -161,18 +160,7 @@
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        function detectarMesa() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const mesaParam = urlParams.get('mesa');
-            if (mesaParam && !isNaN(mesaParam)) {
-                mesaActual = parseInt(mesaParam);
-            }
-            document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
-        }
-
-        detectarMesa();
-        renderizarMenu();
-
+        // Escuchar cambios en el menú general de Firebase
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
@@ -187,6 +175,7 @@
             }
         });
 
+        // Escuchar los pedidos enviados desde cualquier dispositivo en tiempo real
         db.ref('pedidos').on('value', (snapshot) => {
             let data = snapshot.val();
             pedidosDb = [];
@@ -208,7 +197,6 @@
         }
 
         function renderizarMenu() {
-            detectarMesa();
             let contenedor = document.getElementById('contenedor-menu');
             contenedor.innerHTML = '';
             inicializarCantidades();
@@ -292,13 +280,13 @@
 
             let horaActual = new Date().toLocaleTimeString();
             let nuevoPedido = {
-                mesa: mesaActual,
                 nombre: nombre,
                 detalle: resumen.join(', '),
                 total: total.toFixed(2),
                 hora: horaActual
             };
 
+            // Enviar pedido a Firebase para que llegue al panel de administración
             db.ref('pedidos').push(nuevoPedido);
             cambiarVista('exito');
         }
@@ -319,7 +307,7 @@
                 [...pedidosDb].reverse().forEach((p) => {
                     contPedidos.innerHTML += `
                         <div class="pedido-card">
-                            <p><span class="tag-mesa">Mesa ${p.mesa}</span> <span class="tag-hora">🕒 ${p.hora}</span> <span style="float: right;" class="tag-total">Total: $${p.total}</span></p>
+                            <p><span class="tag-mesa">Servidor Principal</span> <span class="tag-hora">🕒 ${p.hora}</span> <span style="float: right;" class="tag-total">Total: $${p.total}</span></p>
                             <p><strong>👤 Cliente:</strong> ${p.nombre}</p>
                             <p><strong>🛍️ Detalle:</strong> ${p.detalle}</p>
                         </div>
