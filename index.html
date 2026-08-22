@@ -170,17 +170,14 @@
             document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
         }
 
-        // CARGA INICIAL INMEDIATA (Para que el menú aparezca al instante)
         detectarMesa();
         renderizarMenu();
 
-        // Conexión en tiempo real con Firebase para el Menú
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
                 menuDb = data;
             } else {
-                // Si la base de datos está vacía, guarda el menú por defecto automáticamente
                 db.ref('menu').set(defaultMenu);
                 menuDb = defaultMenu;
             }
@@ -190,7 +187,6 @@
             }
         });
 
-        // Conexión en tiempo real con Firebase para los Pedidos
         db.ref('pedidos').on('value', (snapshot) => {
             let data = snapshot.val();
             pedidosDb = [];
@@ -353,31 +349,28 @@
             let emoji = document.getElementById('nuevo-emoji').value.trim() || "🍽️";
 
             if (!id || !nombre || isNaN(precio)) {
-                alert("Rellena los campos correctamente.");
+                alert("Completa la clave, el nombre y un precio válido.");
                 return;
             }
 
-            db.ref('menu/' + id).set({ nombre, precio, seccion, emoji });
-            alert("Producto agregado ✅");
+            db.ref('menu/' + id).set({
+                nombre: nombre,
+                precio: precio,
+                seccion: seccion,
+                emoji: emoji
+            });
+
+            document.getElementById('nuevo-id').value = '';
+            document.getElementById('nuevo-nombre').value = '';
+            document.getElementById('nuevo-precio').value = '';
+            document.getElementById('nuevo-seccion').value = '';
+            document.getElementById('nuevo-emoji').value = '';
+            alert("¡Producto agregado con éxito!");
         }
 
         function intentarEliminarProducto(clave) {
-            let pass = prompt("Ingresa la contraseña para eliminar este producto:");
-            if (pass === ADMIN_PASS) {
+            if (confirm("¿Seguro que deseas eliminar este producto?")) {
                 db.ref('menu/' + clave).remove();
-                alert("Producto eliminado.");
-            } else if (pass !== null) {
-                alert("Contraseña incorrecta ❌");
-            }
-        }
-
-        function borrarPedidos() {
-            let pass = prompt("Ingresa la contraseña para confirmar el borrado de todos los pedidos:");
-            if (pass === ADMIN_PASS) {
-                db.ref('pedidos').remove();
-                alert("Pedidos borrados correctamente.");
-            } else if (pass !== null) {
-                alert("Contraseña incorrecta ❌");
             }
         }
 
@@ -393,7 +386,7 @@
                 document.getElementById('vista-exito').classList.remove('hidden');
             } else if (vista === 'admin-login') {
                 document.getElementById('vista-login').classList.remove('hidden');
-            } else if (vista === 'panel-real') {
+            } else if (vista === 'panel') {
                 document.getElementById('vista-panel').classList.remove('hidden');
                 renderizarAdmin();
             }
@@ -403,24 +396,28 @@
             let pass = document.getElementById('admin-pass').value;
             if (pass === ADMIN_PASS) {
                 document.getElementById('admin-pass').value = '';
-                cambiarVista('panel-real');
+                cambiarVista('panel');
             } else {
-                alert("Contraseña incorrecta ❌");
+                alert("Contraseña incorrecta.");
             }
         }
 
-        function intentarAccionAdmin(seccionId) {
-            let pass = prompt("Ingresa la contraseña para desbloquear esta sección:");
-            if (pass === ADMIN_PASS) {
-                toggleSeccion('seccion-' + seccionId);
-            } else if (pass !== null) {
-                alert("Contraseña incorrecta ❌");
+        function intentarAccionAdmin(seccion) {
+            document.getElementById('seccion-reinicio').style.display = 'none';
+            document.getElementById('seccion-menu').style.display = 'none';
+
+            if (seccion === 'reinicio') {
+                document.getElementById('seccion-reinicio').style.display = 'block';
+            } else if (seccion === 'menu') {
+                document.getElementById('seccion-menu').style.display = 'block';
             }
         }
 
-        function toggleSeccion(id) {
-            let el = document.getElementById(id);
-            el.style.display = el.style.display === "block" ? "none" : "block";
+        function borrarPedidos() {
+            if (confirm("¿Estás seguro de borrar TODOS los pedidos? Esta acción no se puede deshacer.")) {
+                db.ref('pedidos').remove();
+                alert("Pedidos borrados.");
+            }
         }
     </script>
 </body>
