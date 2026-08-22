@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Pedidos por Mesa</title>
+    <!-- Importamos Firebase SDK desde CDN oficial -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
     <style>
         :root {
             --primary: #075e54;
@@ -88,7 +92,7 @@
     <div id="vista-exito" class="card hidden" style="text-align: center;">
         <h2 style="color: #25d366;">¡Pedido Recibido! 🎉</h2>
         <p>Tu selección ha sido enviada a cocina con éxito.</p>
-        <button type="button" class="btn-enviar" onclick="reiniciarYVolver()">Hacer otro pedido</button>
+        <button type="button" class="btn-enviar" onclick="reiniciarYVolver()">Volver al menú</button>
     </div>
 
     <!-- VISTA 3: LOGIN ADMIN -->
@@ -104,7 +108,7 @@
     <!-- VISTA 4: PANEL DE CONTROL ADMIN -->
     <div id="vista-panel" class="card hidden" style="max-width: 650px;">
         <h2>📊 Panel de Cocina y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización Local Activa 🌐</p>
+        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización en la Nube en Tiempo Real 🌐</p>
         
         <h3>📋 Pedidos Activos</h3>
         <div id="contenedor-pedidos"></div>
@@ -137,6 +141,13 @@
     </div>
 
     <script>
+        // Configuración de Firebase gratuita para sincronizar móvil y PC al instante
+        const firebaseConfig = {
+            databaseURL: "https://sistemapedidos-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
         let mesaActual = 1;
         let defaultMenu = {
             "hamburguesa": {"nombre": "Hamburguesa Clásica", "precio": 5.00, "seccion": "Platos Principales", "emoji": "🍔"},
@@ -146,30 +157,40 @@
             "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
         };
 
-        let menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
-        let pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+        let menuDb = defaultMenu;
+        let pedidosDb = [];
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        function sincronizarDatos() {
-            // Lee los datos guardados en el navegador (funciona perfecto si se usa localStorage compartido o simulación)
-            let menuLocal = localStorage.getItem('menu_db');
-            let pedidosLocal = localStorage.getItem('pedidos_db');
-            if (menuLocal) menuDb = JSON.parse(menuLocal);
-            if (pedidosLocal) pedidosDb = JSON.parse(pedidosLocal);
-
+        // Escuchar cambios en tiempo real desde la nube de forma automática
+        db.ref('menu').on('value', (snapshot) => {
+            let data = snapshot.val();
+            if (data) {
+                menuDb = data;
+            } else {
+                db.ref('menu').set(defaultMenu);
+                menuDb = defaultMenu;
+            }
             if (!document.getElementById('vista-cliente').classList.contains('hidden')) {
                 renderizarMenu();
             }
             if (!document.getElementById('vista-panel').classList.contains('hidden')) {
                 renderizarAdmin();
             }
-        }
+        });
 
-        function guardarDatos() {
-            localStorage.setItem('menu_db', JSON.stringify(menuDb));
-            localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
-        }
+        db.ref('pedidos').on('value', (snapshot) => {
+            let data = snapshot.val();
+            pedidosDb = [];
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    pedidosDb.push({ id: key, ...data[key] });
+                });
+            }
+            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
+                renderizarAdmin();
+            }
+        });
 
         function inicializarCantidades() {
             cantidades = {};
@@ -279,25 +300,21 @@
                 hora: horaActual
             };
 
-            // Aseguramos que lea lo último antes de insertar
-            let actualPedidos = JSON.parse(localStorage.getItem('pedidos_db')) || [];
-            actualPedidos.push(nuevoPedido);
-            pedidosDb = actualPedidos;
+            // Enviar pedido a Firebase (la PC lo recibe al instante de forma automática)
+            db.ref('pedidos').push(nuevoPedido);
             
-            guardarDatos();
             cambiarVista('exito');
         }
 
         function reiniciarYVolver() {
             document.getElementById('nombre-cliente').value = '';
-            inicializarCantidades();
+            inicializarCantidades(); // Limpia todas las cantidades a 0 en la memoria
+            renderizarMenu();        // Vuelve a pintar el menú totalmente limpio en 0
             cambiarVista('cliente');
         }
 
         function renderizarAdmin() {
             let contPedidos = document.getElementById('contenedor-pedidos');
-            let actualPedidos = JSON.parse(localStorage.getItem('pedidos_db')) || [];
-            pedidosDb = actualPedidos;
             
             if (pedidosDb.length === 0) {
                 contPedidos.innerHTML = '<div class="sin-pedidos">No hay pedidos registrados todavía. 📭</div>';
@@ -340,20 +357,14 @@
                 return;
             }
 
-            menuDb[id] = { nombre, precio, seccion, emoji };
-            guardarDatos();
-            renderizarMenu();
-            renderizarAdmin();
+            db.ref('menu/' + id).set({ nombre, precio, seccion, emoji });
             alert("Producto agregado ✅");
         }
 
         function intentarEliminarProducto(clave) {
             let pass = prompt("Ingresa la contraseña para eliminar este producto:");
             if (pass === ADMIN_PASS) {
-                delete menuDb[clave];
-                guardarDatos();
-                renderizarMenu();
-                renderizarAdmin();
+                db.ref('menu/' + clave).remove();
                 alert("Producto eliminado.");
             } else if (pass !== null) {
                 alert("Contraseña incorrecta ❌");
@@ -363,9 +374,7 @@
         function borrarPedidos() {
             let pass = prompt("Ingresa la contraseña para confirmar el borrado de todos los pedidos:");
             if (pass === ADMIN_PASS) {
-                pedidosDb = [];
-                guardarDatos();
-                renderizarAdmin();
+                db.ref('pedidos').remove();
                 alert("Pedidos borrados correctamente.");
             } else if (pass !== null) {
                 alert("Contraseña incorrecta ❌");
@@ -379,14 +388,12 @@
             document.getElementById('vista-panel').classList.add('hidden');
 
             if (vista === 'cliente') {
-                sincronizarDatos();
                 document.getElementById('vista-cliente').classList.remove('hidden');
             } else if (vista === 'exito') {
                 document.getElementById('vista-exito').classList.remove('hidden');
             } else if (vista === 'admin-login') {
                 document.getElementById('vista-login').classList.remove('hidden');
             } else if (vista === 'panel-real') {
-                sincronizarDatos();
                 document.getElementById('vista-panel').classList.remove('hidden');
             }
         }
@@ -414,15 +421,6 @@
             let el = document.getElementById(id);
             el.style.display = el.style.display === "block" ? "none" : "block";
         }
-
-        // Refresca automáticamente la pantalla de administración cada 2 segundos por si se abre desde otro sitio
-        setInterval(() => {
-            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
-                sincronizarDatos();
-            }
-        }, 2000);
-
-        sincronizarDatos();
     </script>
 </body>
 </html>
