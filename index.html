@@ -73,7 +73,7 @@
     <!-- VISTA 1: MENÚ CLIENTE -->
     <div id="vista-cliente" class="card">
         <h2>🛒 Menú Interactivo</h2>
-        <div id="mesa-label" class="mesa-badge">Mesa: Cargando...</div>
+        <div id="mesa-label" class="mesa-badge">Mesa: 1</div>
         
         <div id="contenedor-menu"></div>
 
@@ -141,7 +141,6 @@
     </div>
 
     <script>
-        // Configuración de Firebase gratuita para sincronizar móvil y PC al instante
         const firebaseConfig = {
             databaseURL: "https://sistemapedidos-default-rtdb.firebaseio.com/"
         };
@@ -162,7 +161,21 @@
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        // Escuchar cambios en tiempo real desde la nube de forma automática
+        // Detectar mesa de forma segura al iniciar
+        function detectarMesa() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const mesaParam = urlParams.get('mesa');
+            if (mesaParam && !isNaN(mesaParam)) {
+                mesaActual = parseInt(mesaParam);
+            }
+            document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
+        }
+
+        // Cargar menú inicial al arrancar la página incluso si firebase demora un milisegundo
+        detectarMesa();
+        renderizarMenu();
+
+        // Escuchar datos de Firebase en tiempo real
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
@@ -197,15 +210,6 @@
             for (let clave in menuDb) {
                 cantidades[clave] = 0;
             }
-        }
-
-        function detectarMesa() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const mesaParam = urlParams.get('mesa');
-            if (mesaParam && !isNaN(mesaParam)) {
-                mesaActual = parseInt(mesaParam);
-            }
-            document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
         }
 
         function renderizarMenu() {
@@ -300,16 +304,14 @@
                 hora: horaActual
             };
 
-            // Enviar pedido a Firebase (la PC lo recibe al instante de forma automática)
             db.ref('pedidos').push(nuevoPedido);
-            
             cambiarVista('exito');
         }
 
         function reiniciarYVolver() {
+            // Limpia por completo la pantalla y los campos para dejar un menú completamente limpio
             document.getElementById('nombre-cliente').value = '';
-            inicializarCantidades(); // Limpia todas las cantidades a 0 en la memoria
-            renderizarMenu();        // Vuelve a pintar el menú totalmente limpio en 0
+            renderizarMenu(); 
             cambiarVista('cliente');
         }
 
