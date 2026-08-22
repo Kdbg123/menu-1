@@ -104,7 +104,7 @@
     <!-- VISTA 4: PANEL DE CONTROL ADMIN -->
     <div id="vista-panel" class="card hidden" style="max-width: 650px;">
         <h2>📊 Panel de Cocina y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización en la nube activa</p>
+        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización activa</p>
         
         <h3>📋 Pedidos Activos</h3>
         <div id="contenedor-pedidos"></div>
@@ -151,34 +151,11 @@
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        // Endpoint de almacenamiento en la nube público y libre para sincronización instantánea
-        const CLOUD_JSON_URL = "https://api.jsonbin.io/v3/b/6571b02012a56370776b9213"; 
-        // Como respaldo directo de alta velocidad ante bloqueos de CORS, utilizamos almacenamiento compartido global:
-        const STORAGE_KEY_SYNC = "menu_restaurante_sync_v2";
-
-        async function cargarDatosNube() {
-            try {
-                // Sincronización mediante canal global web
-                let datosRemotos = localStorage.getItem(STORAGE_KEY_SYNC);
-                if (datosRemotos) {
-                    let parsed = JSON.parse(datosRemotos);
-                    if (parsed.menu) menuDb = parsed.menu;
-                    if (parsed.pedidos) pedidosDb = parsed.pedidos;
-                }
-            } catch(e) {
-                console.log("Modo local activo");
+        function inicializarCantidades() {
+            cantidades = {};
+            for (let clave in menuDb) {
+                cantidades[clave] = 0;
             }
-            renderizarMenu();
-            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
-                renderizarAdmin();
-            }
-        }
-
-        function guardarDatosNube() {
-            let datos = { menu: menuDb, pedidos: pedidosDb };
-            localStorage.setItem(STORAGE_KEY_SYNC, JSON.stringify(datos));
-            localStorage.setItem('menu_db', JSON.stringify(menuDb));
-            localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
         }
 
         function detectarMesa() {
@@ -194,14 +171,13 @@
             detectarMesa();
             let contenedor = document.getElementById('contenedor-menu');
             contenedor.innerHTML = '';
-            cantidades = {};
+            inicializarCantidades();
 
             let secciones = {};
             for (let clave in menuDb) {
-                let sec = menuDb[clave].seccion;
+                let sec = menuDb[clave].seccion || "General";
                 if (!secciones[sec]) secciones[sec] = [];
                 secciones[sec].push({clave, ...menuDb[clave]});
-                cantidades[clave] = 0;
             }
 
             for (let sec in secciones) {
@@ -228,22 +204,28 @@
         }
 
         function cambiarCantidad(item, cambio) {
+            if (cantidades[item] === undefined) cantidades[item] = 0;
             cantidades[item] += cambio;
             if (cantidades[item] < 0) cantidades[item] = 0;
+            
             let elSpan = document.getElementById('cant_' + item);
-            if(elSpan) elSpan.innerText = cantidades[item];
+            if (elSpan) {
+                elSpan.innerText = cantidades[item];
+            }
             calcularTotal();
         }
 
         function calcularTotal() {
             let total = 0;
             for (let item in cantidades) {
-                if(menuDb[item]) {
+                if (menuDb[item]) {
                     total += cantidades[item] * menuDb[item].precio;
                 }
             }
             let elTotal = document.getElementById('total_texto');
-            if(elTotal) elTotal.innerText = total.toFixed(2);
+            if (elTotal) {
+                elTotal.innerText = total.toFixed(2);
+            }
         }
 
         function realizarPedido() {
@@ -269,20 +251,23 @@
             }
 
             let horaActual = new Date().toLocaleTimeString();
-            pedidosDb.push({
+            let nuevoPedido = {
                 mesa: mesaActual,
                 nombre: nombre,
                 detalle: resumen.join(', '),
                 total: total.toFixed(2),
                 hora: horaActual
-            });
+            };
 
-            guardarDatosNube();
+            pedidosDb.push(nuevoPedido);
+            localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
+            
             cambiarVista('exito');
         }
 
         function reiniciarYVolver() {
             document.getElementById('nombre-cliente').value = '';
+            inicializarCantidades();
             cambiarVista('cliente');
         }
 
@@ -297,7 +282,7 @@
                     contPedidos.innerHTML += `
                         <div class="pedido-card">
                             <p><span class="tag-mesa">Mesa ${p.mesa}</span> <span class="tag-hora">🕒 ${p.hora}</span> <span style="float: right;" class="tag-total">Total: $${p.total}</span></p>
-                            <p><strong>👤 Cliente:</strong> ${p.nombre}</p>
+                            <p><strong>👤 Pon tu nombre aquí:</strong> ${p.nombre}</p>
                             <p><strong>🛍️ Detalle:</strong> ${p.detalle}</p>
                         </div>
                     `;
@@ -331,7 +316,7 @@
             }
 
             menuDb[id] = { nombre, precio, seccion, emoji };
-            guardarDatosNube();
+            localStorage.setItem('menu_db', JSON.stringify(menuDb));
             renderizarMenu();
             renderizarAdmin();
             alert("Producto agregado ✅");
@@ -341,7 +326,7 @@
             let pass = prompt("Ingresa la contraseña para eliminar este producto:");
             if (pass === ADMIN_PASS) {
                 delete menuDb[clave];
-                guardarDatosNube();
+                localStorage.setItem('menu_db', JSON.stringify(menuDb));
                 renderizarMenu();
                 renderizarAdmin();
                 alert("Producto eliminado.");
@@ -354,7 +339,7 @@
             let pass = prompt("Ingresa la contraseña para confirmar el borrado de todos los pedidos:");
             if (pass === ADMIN_PASS) {
                 pedidosDb = [];
-                guardarDatosNube();
+                localStorage.setItem('pedidos_db', JSON.stringify(pedidosDb));
                 renderizarAdmin();
                 alert("Pedidos borrados correctamente.");
             } else if (pass !== null) {
@@ -369,14 +354,14 @@
             document.getElementById('vista-panel').classList.add('hidden');
 
             if (vista === 'cliente') {
-                cargarDatosNube();
+                renderizarMenu();
                 document.getElementById('vista-cliente').classList.remove('hidden');
             } else if (vista === 'exito') {
                 document.getElementById('vista-exito').classList.remove('hidden');
             } else if (vista === 'admin-login') {
                 document.getElementById('vista-login').classList.remove('hidden');
             } else if (vista === 'panel-real') {
-                cargarDatosNube();
+                pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
                 renderizarAdmin();
                 document.getElementById('vista-panel').classList.remove('hidden');
             }
@@ -406,12 +391,17 @@
             el.style.display = el.style.display === "block" ? "none" : "block";
         }
 
-        // Actualización automática cada 3 segundos para el panel del administrador
-        setInterval(() => {
-            cargarDatosNube();
-        }, 3000);
+        // Sincronización automática de datos en segundo plano
+        window.addEventListener('storage', (e) => {
+            menuDb = JSON.parse(localStorage.getItem('menu_db')) || defaultMenu;
+            pedidosDb = JSON.parse(localStorage.getItem('pedidos_db')) || [];
+            if (!document.getElementById('vista-panel').classList.contains('hidden')) {
+                renderizarAdmin();
+            }
+        });
 
-        cargarDatosNube();
+        // Iniciar app en la vista del menú
+        renderizarMenu();
     </script>
 </body>
 </html>
