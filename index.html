@@ -170,12 +170,17 @@
             document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
         }
 
+        // CARGA INICIAL INMEDIATA (Para que el menú aparezca al instante)
+        detectarMesa();
+        renderizarMenu();
+
         // Conexión en tiempo real con Firebase para el Menú
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
                 menuDb = data;
             } else {
+                // Si la base de datos está vacía, guarda el menú por defecto automáticamente
                 db.ref('menu').set(defaultMenu);
                 menuDb = defaultMenu;
             }
@@ -298,7 +303,6 @@
                 hora: horaActual
             };
 
-            // Envía el pedido a la nube; la PC lo recibe de inmediato
             db.ref('pedidos').push(nuevoPedido);
             cambiarVista('exito');
         }
