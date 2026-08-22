@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Pedidos por Mesa</title>
-    <!-- Importamos Firebase SDK desde CDN oficial -->
+    <title>Sistema de Pedidos Sincronizado</title>
+    <!-- Firebase SDK oficial -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -108,7 +108,7 @@
     <!-- VISTA 4: PANEL DE CONTROL ADMIN -->
     <div id="vista-panel" class="card hidden" style="max-width: 650px;">
         <h2>📊 Panel de Cocina y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización en la Nube en Tiempo Real 🌐</p>
+        <p style="text-align:center; font-size: 12px; color: #666;">Sincronización Total en la Nube 🌐</p>
         
         <h3>📋 Pedidos Activos</h3>
         <div id="contenedor-pedidos"></div>
@@ -161,7 +161,6 @@
         let cantidades = {};
         const ADMIN_PASS = "1234";
 
-        // Detectar mesa de forma segura al iniciar
         function detectarMesa() {
             const urlParams = new URLSearchParams(window.location.search);
             const mesaParam = urlParams.get('mesa');
@@ -171,11 +170,7 @@
             document.getElementById('mesa-label').innerText = `📍 Estás en la Mesa #${mesaActual}`;
         }
 
-        // Cargar menú inicial al arrancar la página incluso si firebase demora un milisegundo
-        detectarMesa();
-        renderizarMenu();
-
-        // Escuchar datos de Firebase en tiempo real
+        // Conexión en tiempo real con Firebase para el Menú
         db.ref('menu').on('value', (snapshot) => {
             let data = snapshot.val();
             if (data) {
@@ -184,14 +179,13 @@
                 db.ref('menu').set(defaultMenu);
                 menuDb = defaultMenu;
             }
-            if (!document.getElementById('vista-cliente').classList.contains('hidden')) {
-                renderizarMenu();
-            }
+            renderizarMenu();
             if (!document.getElementById('vista-panel').classList.contains('hidden')) {
                 renderizarAdmin();
             }
         });
 
+        // Conexión en tiempo real con Firebase para los Pedidos
         db.ref('pedidos').on('value', (snapshot) => {
             let data = snapshot.val();
             pedidosDb = [];
@@ -304,12 +298,12 @@
                 hora: horaActual
             };
 
+            // Envía el pedido a la nube; la PC lo recibe de inmediato
             db.ref('pedidos').push(nuevoPedido);
             cambiarVista('exito');
         }
 
         function reiniciarYVolver() {
-            // Limpia por completo la pantalla y los campos para dejar un menú completamente limpio
             document.getElementById('nombre-cliente').value = '';
             renderizarMenu(); 
             cambiarVista('cliente');
@@ -397,6 +391,7 @@
                 document.getElementById('vista-login').classList.remove('hidden');
             } else if (vista === 'panel-real') {
                 document.getElementById('vista-panel').classList.remove('hidden');
+                renderizarAdmin();
             }
         }
 
