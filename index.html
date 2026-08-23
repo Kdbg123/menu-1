@@ -1,528 +1,199 @@
-import http.server
-import socketserver
-import urllib.parse
-import base64
-import socket
-import threading
-from datetime import datetime, timedelta, timezone
-
-# --- CONFIGURACIÓN DE ACCESO (ADMIN) ---
-ADMIN_USER = "admin"
-ADMIN_PASS = "1234"
-
-# Lista temporal en memoria para almacenar los pedidos
-PEDIDOS_DB = []
-
-# --- MENÚ Y PRECIOS GLOBALES (Modificables desde el Admin) ---
-MENU_DB = {
-    "hamburguesa": {"nombre": "Hamburguesa Clásica", "precio": 5.00, "seccion": "Platos Principales", "emoji": "🍔"},
-    "hotdog": {"nombre": "Hot Dog Especial", "precio": 3.50, "seccion": "Platos Principales", "emoji": "🌭"},
-    "refresco": {"nombre": "Refresco Cola 500ml", "precio": 1.50, "seccion": "Bebidas", "emoji": "🥤"},
-    "jugo": {"nombre": "Jugo Natural de Fresa", "precio": 2.00, "seccion": "Bebidas", "emoji": "🧃"},
-    "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
-}
-
-# --- ZONA HORARIA DE VENEZUELA (UTC-4) ---
-ZONA_VENEZUELA = timezone(timedelta(hours=-4))
-
-# --- INTERFAZ WEB (CLIENTE) ---
-HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hacer Pedido - Mesa MESA_NUMERO</title>
+    <title>Editor de Python en el Navegador</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px 0; }
-        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 100%; max-width: 420px; box-sizing: border-box; }
-        h2 { text-align: center; color: #333; margin-bottom: 5px; }
-        .mesa-badge { text-align: center; background: #e7f5e4; color: #075e54; font-weight: bold; margin-bottom: 15px; font-size: 15px; padding: 6px; border-radius: 5px; }
-        label { font-weight: bold; font-size: 14px; display: block; margin-top: 15px; color: #555; }
-        input[type="text"] { width: 100%; padding: 10px; margin-top: 5px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 14px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        h2 { margin-bottom: 10px; color: #38bdf8; }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-grow: 1;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 250px;
+            background-color: #1e293b;
+            color: #38bdf8;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 15px;
+            resize: vertical;
+            outline: none;
+            box-sizing: border-box;
+        }
+        textarea:focus { border-color: #38bdf8; }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #runBtn { background-color: #22c55e; color: white; }
+        #runBtn:hover { background-color: #16a34a; }
+        #stopBtn { background-color: #ef4444; color: white; }
+        #stopBtn:hover { background-color: #dc2626; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
         
-        .seccion-titulo { font-size: 15px; color: #075e54; border-bottom: 2px solid #25d366; margin-top: 20px; margin-bottom: 10px; padding-bottom: 3px; font-weight: bold; }
-        .item-menu { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #f9f9f9; padding: 8px 12px; border-radius: 8px; border: 1px solid #eee; }
-        .item-info { font-size: 13px; color: #333; }
-        .item-info span { display: block; font-size: 11px; color: #777; }
-        .controles { display: flex; align-items: center; gap: 8px; }
-        .controles button { background: #075e54; color: white; border: none; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .controles button:hover { background: #128c7e; }
-        .controles span { font-weight: bold; width: 20px; text-align: center; font-size: 14px; }
-
-        .total-box { background: #e7f5e4; padding: 12px; border-radius: 8px; margin-top: 20px; text-align: right; font-size: 16px; font-weight: bold; color: #075e54; }
-        button.btn-enviar { width: 100%; padding: 12px; background: #25d366; color: white; border: none; cursor: pointer; font-weight: bold; margin-top: 15px; border-radius: 8px; font-size: 15px; transition: background 0.3s; }
-        button.btn-enviar:hover { background: #128c7e; }
-        .admin-link { display: block; text-align: center; margin-top: 15px; color: #075e54; text-decoration: none; font-size: 13px; }
-        .admin-link:hover { text-decoration: underline; }
+        .output-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        pre {
+            flex-grow: 1;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            color: #cbd5e1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .status {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>🛒 Menú Interactivo</h2>
-        <div class="mesa-badge">📍 Mesa: MESA_NUMERO</div>
+
+    <h2>Editor Python Online</h2>
+    
+    <div class="container">
+        <textarea id="codeEditor" placeholder="Escribe tu código Python aquí...&#10;print('¡Hola desde Python!')">print("¡Hola Mundo!")
+for i in range(5):
+    print(f"Número: {i}")</textarea>
         
-        <form action="/enviar" method="POST" id="formPedido">
-            <input type="hidden" name="mesa" value="MESA_NUMERO">
-            <input type="hidden" name="detalle_pedido" id="detalle_pedido">
-            <input type="hidden" name="total_pagar" id="total_pagar">
+        <div class="toolbar">
+            <button id="runBtn" onclick="runPython()">▶ Run</button>
+            <button id="stopBtn" onclick="stopPython()" disabled>⏹ Stop</button>
+        </div>
+
+        <div class="output-container">
+            <div class="status" id="statusText">Cargando intérprete de Python (Pyodide)...</div>
+            <pre id="output">Espera un momento mientras se inicializa el entorno...</pre>
+        </div>
+    </div>
+
+    <script>
+        let worker = null;
+        const runBtn = document.getElementById("runBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const outputPre = document.getElementById("output");
+        const statusText = document.getElementById("statusText");
+        const codeEditor = document.getElementById("codeEditor");
+
+        // Código que correrá dentro del Web Worker para aislar la ejecución
+        const workerCode = `
+            importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js");
             
-            <label for="nombre">Tu Nombre:</label>
-            <input type="text" id="nombre" name="nombre" placeholder="Ej. Carlos" required>
+            let pyodideReady = false;
 
-            REEMPLAZAR_DINAMICO_MENU
+            async function init() {
+                self.pyodide = await loadPyodide();
+                pyodideReady = true;
+                postMessage({ type: 'ready' });
+            }
+            init();
 
-            <div class="total-box">
-                Total: $<span id="total_texto">0.00</span>
-            </div>
+            onmessage = async (e) => {
+                if (!pyodideReady) return;
+                if (e.data.type === 'run') {
+                    const code = e.data.code;
+                    try {
+                        // Redirigir stdout para capturar los prints
+                        self.pyodide.runPython(\`
+                            import sys
+                            import io
+                            sys.stdout = io.StringIO()
+                        \`);
+                        
+                        await self.pyodide.runPythonAsync(code);
+                        
+                        let stdout = self.pyodide.runPython("sys.stdout.getvalue()");
+                        postMessage({ type: 'output', data: stdout });
+                    } catch (err) {
+                        postMessage({ type: 'output', data: "Error: " + err.message });
+                    }
+                }
+            };
+        `;
 
-            <button type="submit" class="btn-enviar" onclick="prepararEnvio()">Realizar Pedido 🚀</button>
-        </form>
-        <a href="URL_PANEL_ADMIN" class="admin-link">📊 Ver Panel de Pedidos (Admin)</a>
-    </div>
+        function createWorker() {
+            const blob = new Blob([workerCode], { type: "application/javascript" });
+            worker = new Worker(URL.createObjectURL(blob));
 
-    <script>
-        REEMPLAZAR_SCRIPTS_JS
-    </script>
-</body>
-</html>
-"""
+            worker.onmessage = function(e) {
+                if (e.data.type === 'ready') {
+                    statusText.textContent = "Listo para ejecutar";
+                    outputPre.textContent = "Entorno Python listo.";
+                    runBtn.disabled = false;
+                } else if (e.data.type === 'output') {
+                    outputPre.textContent = e.data.data;
+                    resetUI();
+                }
+            };
+        }
 
-# --- INTERFAZ WEB (ÉXITO) ---
-HTML_EXITO = """
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Pedido Exitoso</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; max-width: 350px; }
-        h2 { color: #25d366; }
-        a { display: inline-block; margin-top: 20px; text-decoration: none; background: #075e54; color: white; padding: 10px 20px; border-radius: 5px; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h2>¡Pedido Recibido! 🎉</h2>
-        <p>Tu selección ha sido enviada a cocina con éxito.</p>
-        <a href="/">Volver al menú</a>
-    </div>
-</body>
-</html>
-"""
+        // Inicializar el worker al cargar la página
+        createWorker();
 
-# --- PANEL DE RECEPCIÓN Y CONFIGURACIÓN PROTEGIDO ---
-HTML_PANEL = """
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Pedidos y Admin</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
-        .container { max-width: 650px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-        h2, h3 { color: #075e54; text-align: center; }
-        .pedido-card { background: #f9f9f9; border-left: 5px solid #25d366; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
-        .pedido-card p { margin: 5px 0; color: #333; }
-        .tag-mesa { background: #075e54; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .tag-total { background: #e7f5e4; color: #075e54; padding: 2px 8px; border-radius: 4px; font-size: 13px; font-weight: bold; }
-        .tag-hora { font-size: 12px; color: #666; float: right; }
-        .volver { display: block; text-align: center; margin-top: 20px; color: #075e54; text-decoration: none; font-weight: bold; }
-        .sin-pedidos { text-align: center; color: #777; padding: 20px; }
-        
-        .admin-buttons { display: flex; gap: 10px; margin-top: 20px; }
-        .btn-toggle { flex: 1; background: #075e54; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; text-align: center; }
-        .btn-toggle:hover { background: #128c7e; }
-        
-        .admin-section { display: none; margin-top: 20px; border: 1px solid #ddd; padding: 20px; border-radius: 10px; background: #fafafa; }
-        .item-config { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; background: white; padding: 8px; border: 1px solid #ddd; border-radius: 6px; }
-        .item-config input[type="text"] { flex: 2; padding: 6px; font-size: 13px; }
-        .item-config input[type="number"] { flex: 1; padding: 6px; font-size: 13px; }
-        .btn-admin { background: #25d366; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-        .btn-admin:hover { background: #128c7e; }
-        .btn-eliminar-item { background: #ff4d4d; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .btn-eliminar-item:hover { background: #cc0000; }
-        
-        .reinicio-box input, .admin-section input[type="password"] { padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-size: 14px; width: 100%; box-sizing: border-box; margin-top: 10px; }
-        .reinicio-box button { background: #ff4d4d; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-    </style>
-    <script>
-        function toggleSeccion(id) {
-            var el = document.getElementById(id);
-            if (el.style.display === "block") {
-                el.style.display = "none";
-            } else {
-                el.style.display = "block";
+        function runPython() {
+            outputPre.textContent = "Ejecutando...";
+            statusText.textContent = "Ejecutando código...";
+            runBtn.disabled = true;
+            stopBtn.disabled = false;
+
+            const code = codeEditor.value;
+            worker.postMessage({ type: 'run', code: code });
+        }
+
+        function stopPython() {
+            if (worker) {
+                worker.terminate(); // Mata el hilo de ejecución inmediatamente
+                outputPre.textContent += "\n[Proceso detenido por el usuario]";
+                statusText.textContent = "Ejecución detenida.";
+                resetUI();
+                createWorker(); // Reinicia el worker para futuras ejecuciones
             }
         }
-        function prepararEliminacion(clave) {
-            document.getElementById('input_eliminar').value = clave;
+
+        function resetUI() {
+            runBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusText.textContent = "Listo";
         }
-
-        setInterval(function() {
-            fetch(window.location.href)
-                .then(response => response.text())
-                .then(html => {
-                    var parser = new DOMParser();
-                    var doc = parser.parseFromString(html, 'text/html');
-                    var nuevosPedidos = doc.getElementById('contenedor-pedidos').innerHTML;
-                    document.getElementById('contenedor-pedidos').innerHTML = nuevosPedidos;
-                })
-                .catch(err => console.log('Error actualizando pedidos:', err));
-        }, 5000);
     </script>
-</head>
-<body>
-    <div class="container">
-        <h2>🔒 Panel de Control y Pedidos</h2>
-        <p style="text-align:center; font-size: 12px; color: #666;">(Los pedidos se actualizan automáticamente en vivo 🔄)</p>
-        
-        <h3>📋 Pedidos en Vivo</h3>
-        <div id="contenedor-pedidos">
-            REEMPLAZAR_LISTA_PEDIDOS
-        </div>
-        
-        <div class="admin-buttons">
-            <button class="btn-toggle" onclick="toggleSeccion('seccion-menu')">⚙️ Administrar Menú</button>
-            <button class="btn-toggle" style="background:#ff4d4d;" onclick="toggleSeccion('seccion-reinicio')">🗑️ Panel de Reinicio</button>
-        </div>
-
-        <div id="seccion-reinicio" class="admin-section">
-            <h3 style="color: #ff4d4d; margin-top:0;">Borrar Todos los Pedidos</h3>
-            <form action="/reiniciar" method="POST" onsubmit="return confirm('¿Seguro que deseas borrar todos los pedidos?');">
-                <input type="password" name="password" placeholder="Contraseña de Admin" required>
-                <button type="submit">Confirmar Reinicio</button>
-            </form>
-        </div>
-
-        <div id="seccion-menu" class="admin-section">
-            <h3 style="color: #075e54; margin-top:0;">Modificar, Agregar o Quitar Productos</h3>
-            
-            <form action="/actualizar_menu" method="POST" id="formAdminMenu">
-                <input type="hidden" name="eliminar_clave" id="input_eliminar" value="">
-                
-                <p style="font-weight:bold; font-size:13px; color:#444;">Items Actuales:</p>
-                REEMPLAZAR_CONFIG_MENU
-                
-                <hr style="margin: 20px 0; border:0; border-top:1px solid #ddd;">
-                <p style="font-weight:bold; font-size:13px; color:#444;">➕ Agregar Nuevo Producto:</p>
-                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                    <input type="text" name="nuevo_clave" placeholder="Clave (ej: pizza)" style="flex:1;">
-                    <input type="text" name="nuevo_nombre" placeholder="Nombre" style="flex:2;">
-                    <input type="number" step="0.01" name="nuevo_precio" placeholder="Precio" style="flex:1;">
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <input type="text" name="nuevo_seccion" placeholder="Sección (ej: Platos Principales)" style="flex:2;">
-                    <input type="text" name="nuevo_emoji" placeholder="Emoji (ej: 🍕)" style="flex:1;">
-                </div>
-
-                <div style="margin-top: 15px;">
-                    <input type="password" name="password" placeholder="Contraseña de Admin" required>
-                    <button type="submit" class="btn-admin">Guardar Cambios del Menú</button>
-                </div>
-            </form>
-        </div>
-        
-        <a href="URL_INICIO" class="volver">⬅ Ir a la página principal</a>
-    </div>
 </body>
 </html>
-"""
-
-class ServidorMesaHandler(http.server.BaseHTTPRequestHandler):
-    mesa_id = "1"
-    puerto_actual = 8081
-
-    def do_GET(self):
-        parsed_path = urllib.parse.urlparse(self.path)
-        path = parsed_path.path
-        
-        if path == '/':
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-            
-            html_menu = ""
-            secciones_actuales = {}
-            for clave, info in MENU_DB.items():
-                sec = info["seccion"]
-                if sec not in secciones_actuales:
-                    secciones_actuales[sec] = []
-                secciones_actuales[sec].append((clave, info))
-
-            for seccion, items in secciones_actuales.items():
-                html_menu += f'<div class="seccion-titulo">{seccion}</div>'
-                for clave, info in items:
-                    html_menu += f"""
-                    <div class="item-menu">
-                        <div class="item-info">{info['emoji']} {info['nombre']}<span>${info['precio']:.2f}</span></div>
-                        <div class="controles">
-                            <button type="button" onclick="cambiarCantidad('{clave}', -1)">-</button>
-                            <span id="cant_{clave}">0</span>
-                            <button type="button" onclick="cambiarCantidad('{clave}', 1)">+</button>
-                        </div>
-                    </div>
-                    """
-
-            js_precios = "const precios = {\n"
-            js_nombres = "const nombresItems = {\n"
-            js_cantidades = "let cantidades = {\n"
-            
-            for clave, info in MENU_DB.items():
-                js_precios += f"            {clave}: {info['precio']},\n"
-                js_nombres += f"            {clave}: \"{info['nombre']}\",\n"
-                js_cantidades += f"            {clave}: 0,\n"
-            js_precios += "        };"
-            js_nombres += "        };"
-            js_cantidades += "        };"
-
-            script_completo = f"""
-        {js_precios}
-        {js_nombres}
-        {js_cantidades}
-
-        function cambiarCantidad(item, cambio) {{
-            cantidades[item] += cambio;
-            if (cantidades[item] < 0) {{ cantidades[item] = 0; }}
-            document.getElementById('cant_' + item).innerText = cantidades[item];
-            calcularTotal();
-        }}
-
-        function calcularTotal() {{
-            let total = 0;
-            for (let item in cantidades) {{
-                total += cantidades[item] * precios[item];
-            }}
-            document.getElementById('total_texto').innerText = total.toFixed(2);
-        }}
-
-        function prepararEnvio() {{
-            let resumen = [];
-            let total = 0;
-            
-            for (let item in cantidades) {{
-                if (cantidades[item] > 0) {{
-                    let subtotal = cantidades[item] * precios[item];
-                    resumen.push(cantidades[item] + "x " + nombresItems[item] + " ($" + subtotal.toFixed(2) + ")");
-                    total += subtotal;
-                }}
-            }}
-
-            if (total === 0) {{
-                alert("Por favor selecciona al menos un producto antes de enviar el pedido.");
-                event.preventDefault();
-                return;
-            }}
-
-            document.getElementById('detalle_pedido').value = resumen.join(', ');
-            document.getElementById('total_pagar').value = total.toFixed(2);
-        }}
-            """
-
-            html = HTML_TEMPLATE.replace("MESA_NUMERO", str(self.mesa_id))
-            html = html.replace("URL_PANEL_ADMIN", f"http://{obtener_ip_local()}:{self.puerto_actual}/pedidos")
-            html = html.replace("REEMPLAZAR_DINAMICO_MENU", html_menu)
-            html = html.replace("REEMPLAZAR_SCRIPTS_JS", script_completo)
-            
-            self.wfile.write(html.encode("utf-8"))
-            
-        elif path == '/pedidos':
-            auth_header = self.headers.get('Authorization')
-            credenciales_correctas = base64.b64encode(f"{ADMIN_USER}:{ADMIN_PASS}".encode("utf-8")).decode("utf-8")
-            expected_auth = f"Basic {credenciales_correctas}"
-            
-            if auth_header != expected_auth:
-                self.send_response(401)
-                self.send_header("WWW-Authenticate", 'Basic realm="Acceso Restringido al Panel de Pedidos"')
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write("<h1>Acceso Denegado</h1><p>Debes ingresar la contraseña correcta.</p>".encode("utf-8"))
-                return
-
-            html_pedidos_html = ""
-            if not PEDIDOS_DB:
-                html_pedidos_html = '<div class="sin-pedidos">No hay pedidos registrados todavía. 📭</div>'
-            else:
-                for p in reversed(PEDIDOS_DB):
-                    html_pedidos_html += f"""
-                    <div class="pedido-card">
-                        <p><span class="tag-mesa">Mesa {p['mesa']}</span> <span class="tag-hora">🕒 {p['hora']}</span> <span style="float: right; margin-right: 10px;" class="tag-total">Total: ${p['total']}</span></p>
-                        <p><strong>👤 Cliente:</strong> {p['nombre']}</p>
-                        <p><strong>🛍️ Detalle:</strong> {p['detalle']}</p>
-                    </div>
-                    """
-            
-            html_config_menu = ""
-            for clave, info in MENU_DB.items():
-                html_config_menu += f"""
-                <div class="item-config">
-                    <span>{info['emoji']}</span>
-                    <input type="text" name="nombre_{clave}" value="{info['nombre']}" required>
-                    <input type="number" step="0.01" name="precio_{clave}" value="{info['precio']}" required>
-                    <button type="submit" class="btn-eliminar-item" onclick="prepararEliminacion('{clave}'); return confirm('¿Eliminar este producto?');">🗑️</button>
-                </div>
-                """
-
-            pagina_final = HTML_PANEL.replace("REEMPLAZAR_LISTA_PEDIDOS", html_pedidos_html)
-            pagina_final = pagina_final.replace("REEMPLAZAR_CONFIG_MENU", html_config_menu)
-            pagina_final = pagina_final.replace("URL_INICIO", f"http://{obtener_ip_local()}:{self.puerto_actual}/")
-            
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(pagina_final.encode("utf-8"))
-        else:
-            self.send_error(404, "Página no encontrada")
-
-    def do_POST(self):
-        if self.path == '/enviar':
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
-            
-            params = urllib.parse.parse_qs(body)
-            nombre = params.get('nombre', ['Anónimo'])[0]
-            detalle = params.get('detalle_pedido', ['Sin detalle'])[0]
-            total = params.get('total_pagar', ['0.00'])[0]
-            
-            hora_actual = datetime.now(ZONA_VENEZUELA).strftime("%H:%M:%S")
-            
-            PEDIDOS_DB.append({
-                "mesa": str(self.mesa_id), 
-                "nombre": nombre, 
-                "detalle": detalle, 
-                "total": total,
-                "hora": hora_actual
-            })
-            
-            print("\n" + "="*40)
-            print(f"📩 NUEVO PEDIDO - MESA {self.mesa_id} [{hora_actual}]")
-            print(f"👤 Cliente: {nombre}")
-            print(f"🛍️ Detalle: {detalle}")
-            print(f"💵 Total: ${total}")
-            print("="*40 + "\n")
-            
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(HTML_EXITO.encode("utf-8"))
-            
-        elif self.path == '/reiniciar':
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
-            params = urllib.parse.parse_qs(body)
-            password_input = params.get('password', [''])[0]
-
-            if password_input == ADMIN_PASS:
-                PEDIDOS_DB.clear()
-                print("\n⚠️ [ADMIN] Los pedidos han sido reiniciados.\n")
-                self.send_response(200)
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write("<html><body style='font-family:sans-serif; text-align:center; padding-top:50px;'><h2>Pedidos reiniciados con éxito 🗑️</h2><a href='/pedidos'>Volver al panel</a></body></html>".encode("utf-8"))
-            else:
-                self.send_response(401)
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write("<html><body style='font-family:sans-serif; text-align:center; padding-top:50px;'><h2 style='color:red;'>Clave incorrecta ❌</h2><a href='/pedidos'>Volver al panel</a></body></html>".encode("utf-8"))
-
-        elif self.path == '/actualizar_menu':
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
-            params = urllib.parse.parse_qs(body)
-            password_input = params.get('password', [''])[0]
-
-            if password_input == ADMIN_PASS:
-                item_a_eliminar = params.get('eliminar_clave', [''])[0].strip()
-                if item_a_eliminar and item_a_eliminar in MENU_DB:
-                    del MENU_DB[item_a_eliminar]
-
-                for clave in list(MENU_DB.keys()):
-                    nuevo_nombre = params.get(f'nombre_{clave}', [None])[0]
-                    nuevo_precio = params.get(f'precio_{clave}', [None])[0]
-                    if nuevo_nombre:
-                        MENU_DB[clave]["nombre"] = nuevo_nombre.strip()
-                    if nuevo_precio:
-                        try:
-                            MENU_DB[clave]["precio"] = float(nuevo_precio)
-                        except ValueError:
-                            pass
-
-                nueva_clave = params.get('nuevo_clave', [''])[0].strip().lower().replace(" ", "_")
-                nuevo_nombre = params.get('nuevo_nombre', [''])[0].strip()
-                nuevo_precio = params.get('nuevo_precio', [''])[0].strip()
-                nuevo_seccion = params.get('nuevo_seccion', [''])[0].strip()
-                nuevo_emoji = params.get('nuevo_emoji', [''])[0].strip()
-
-                if nueva_clave and nuevo_nombre and nuevo_precio:
-                    try:
-                        MENU_DB[nueva_clave] = {
-                            "nombre": nuevo_nombre,
-                            "precio": float(nuevo_precio),
-                            "seccion": nuevo_seccion if nuevo_seccion else "Otros",
-                            "emoji": nuevo_emoji if nuevo_emoji else "🍽️"
-                        }
-                    except ValueError:
-                        pass
-                
-                print("\n✏️ [ADMIN] El menú y los precios han sido actualizados.\n")
-                self.send_response(200)
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write("<html><body style='font-family:sans-serif; text-align:center; padding-top:50px;'><h2>Menú actualizado con éxito ✅</h2><a href='/pedidos'>Volver al panel</a></body></html>".encode("utf-8"))
-            else:
-                self.send_response(401)
-                self.send_header("Content-type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write("<html><body style='font-family:sans-serif; text-align:center; padding-top:50px;'><h2 style='color:red;'>Clave incorrecta ❌</h2><a href='/pedidos'>Volver al panel</a></body></html>".encode("utf-8"))
-        else:
-            self.send_error(404, "Ruta no encontrada")
-
-def obtener_ip_local():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(('10.255.255.255', 1))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = '127.0.0.1'
-    finally:
-        s.close()
-    return ip
-
-def iniciar_servidor(numero_mesa, puerto):
-    class HandlerPersonalizado(ServidorMesaHandler):
-        mesa_id = str(numero_mesa)
-        puerto_actual = puerto
-
-    with socketserver.TCPServer(("", puerto), HandlerPersonalizado) as httpd:
-        print(f"🟢 Servidor de la MESA {numero_mesa} activo en: http://{obtener_ip_local()}:{puerto}")
-        httpd.serve_forever()
-
-if __name__ == '__main__':
-    ip_local = obtener_ip_local()
-    print("\n" + "="*50)
-    print("🚀 INICIANDO LOS SERVIDORES PARA CADA MESA")
-    print("="*50)
-    
-    configuraciones = [
-        {"mesa": 1, "puerto": 8081},
-        {"mesa": 2, "puerto": 8082},
-        {"mesa": 3, "puerto": 8083}
-    ]
-    
-    hilos = []
-    for cfg in configuraciones:
-        hilo = threading.Thread(target=iniciar_servidor, args=(cfg["mesa"], cfg["puerto"]))
-        hilo.daemon = True
-        hilo.start()
-        hilos.append(hilo)
-        
-    print(f"\n💡 Panel de administración disponible en cualquiera de los puertos (Ej: http://{ip_local}:8081/pedidos)")
-    print("Presiona Ctrl+C para detener todos los servidores.\n")
-    
-    try:
-        for hilo in hilos:
-            hilo.join()
-    except KeyboardInterrupt:
-        print("\nServidores detenidos.")
