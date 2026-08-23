@@ -91,12 +91,12 @@
     <h2>Editor Python Online</h2>
     
     <div class="container">
-        <textarea id="codeEditor" placeholder="Escribe tu código Python aquí...&#10;print('¡Hola desde Python!')">print("¡Hola Mundo!")
+        <textarea id="codeEditor" placeholder="Escribe tu código Python aquí...">print("¡Hola Mundo!")
 for i in range(5):
     print(f"Número: {i}")</textarea>
         
         <div class="toolbar">
-            <button id="runBtn" onclick="runPython()">▶ Run</button>
+            <button id="runBtn" onclick="runPython()" disabled>▶ Run</button>
             <button id="stopBtn" onclick="stopPython()" disabled>⏹ Stop</button>
         </div>
 
@@ -114,7 +114,6 @@ for i in range(5):
         const statusText = document.getElementById("statusText");
         const codeEditor = document.getElementById("codeEditor");
 
-        // Código que correrá dentro del Web Worker para aislar la ejecución
         const workerCode = `
             importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js");
             
@@ -132,17 +131,21 @@ for i in range(5):
                 if (e.data.type === 'run') {
                     const code = e.data.code;
                     try {
-                        // Redirigir stdout para capturar los prints
+                        // Redirigir stdout y evitar errores comunes de hilos en WebAssembly
                         self.pyodide.runPython(\`
                             import sys
                             import io
                             sys.stdout = io.StringIO()
+                            sys.stderr = io.StringIO()
                         \`);
                         
                         await self.pyodide.runPythonAsync(code);
                         
                         let stdout = self.pyodide.runPython("sys.stdout.getvalue()");
-                        postMessage({ type: 'output', data: stdout });
+                        let stderr = self.pyodide.runPython("sys.stderr.getvalue()");
+                        let output = stdout + (stderr ? "\\n[Stderr]:\\n" + stderr : "");
+                        
+                        postMessage({ type: 'output', data: output });
                     } catch (err) {
                         postMessage({ type: 'output', data: "Error: " + err.message });
                     }
@@ -166,7 +169,6 @@ for i in range(5):
             };
         }
 
-        // Inicializar el worker al cargar la página
         createWorker();
 
         function runPython() {
