@@ -3,199 +3,340 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de Python en el Navegador</title>
+    <title>Simulador de Servidor Python - Sistema de Mesas</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: 100vh;
-            box-sizing: border-box;
-        }
-        h2 { margin-bottom: 10px; color: #38bdf8; }
-        .container {
-            width: 100%;
-            max-width: 800px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            flex-grow: 1;
-            margin-bottom: 20px;
-        }
-        textarea {
-            width: 100%;
-            height: 250px;
-            background-color: #1e293b;
-            color: #38bdf8;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 15px;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 15px;
-            resize: vertical;
-            outline: none;
-            box-sizing: border-box;
-        }
-        textarea:focus { border-color: #38bdf8; }
-        .toolbar {
-            display: flex;
-            gap: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 14px;
-            font-weight: bold;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        #runBtn { background-color: #22c55e; color: white; }
-        #runBtn:hover { background-color: #16a34a; }
-        #stopBtn { background-color: #ef4444; color: white; }
-        #stopBtn:hover { background-color: #dc2626; }
-        button:disabled { background-color: #475569; cursor: not-allowed; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; box-sizing: border-box; }
+        .wrapper { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid #334155; }
+        h2, h3 { color: #38bdf8; text-align: center; margin-top: 0; }
+        .nav-simulator { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; font-size: 14px; }
+        select { background: #1e293b; color: white; padding: 6px; border-radius: 6px; border: 1px solid #334155; }
         
-        .output-container {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-        }
-        pre {
-            flex-grow: 1;
-            background-color: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 0;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            color: #cbd5e1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        .status {
-            font-size: 13px;
-            color: #94a3b8;
-            margin-bottom: 5px;
-        }
+        .mesa-badge { text-align: center; background: rgba(34, 197, 94, 0.1); color: #22c55e; font-weight: bold; margin-bottom: 15px; font-size: 15px; padding: 6px; border-radius: 5px; border: 1px solid rgba(34, 197, 94, 0.2); }
+        label { font-weight: bold; font-size: 14px; display: block; margin-top: 15px; color: #94a3b8; }
+        input[type="text"], input[type="password"], input[type="number"] { width: 100%; padding: 10px; margin-top: 5px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; font-size: 14px; outline: none; }
+        input:focus { border-color: #38bdf8; }
+
+        .seccion-titulo { font-size: 15px; color: #38bdf8; border-bottom: 2px solid #38bdf8; margin-top: 20px; margin-bottom: 10px; padding-bottom: 3px; font-weight: bold; }
+        .item-menu { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #0f172a; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; }
+        .item-info { font-size: 14px; color: #f8fafc; }
+        .item-info span { display: block; font-size: 12px; color: #94a3b8; }
+        .controles { display: flex; align-items: center; gap: 8px; }
+        .controles button { background: #0284c7; color: white; border: none; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .controles button:hover { background: #0369a1; }
+        .controles span { font-weight: bold; width: 25px; text-align: center; font-size: 15px; }
+
+        .total-box { background: rgba(34, 197, 94, 0.1); padding: 12px; border-radius: 8px; margin-top: 20px; text-align: right; font-size: 16px; font-weight: bold; color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.2); }
+        button.btn-enviar { width: 100%; padding: 12px; background: #22c55e; color: white; border: none; cursor: pointer; font-weight: bold; margin-top: 15px; border-radius: 8px; font-size: 15px; transition: background 0.2s; }
+        button.btn-enviar:hover { background: #16a34a; }
+        
+        .admin-link, .volver { display: block; text-align: center; margin-top: 15px; color: #38bdf8; text-decoration: none; font-size: 13px; cursor: pointer; }
+        .admin-link:hover, .volver:hover { text-decoration: underline; }
+
+        /* Panel Admin */
+        .pedido-card { background: #0f172a; border-left: 5px solid #22c55e; padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #334155; }
+        .pedido-card p { margin: 5px 0; color: #cbd5e1; }
+        .tag-mesa { background: #0284c7; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .tag-total { background: rgba(34, 197, 94, 0.1); color: #22c55e; padding: 2px 8px; border-radius: 4px; font-size: 13px; font-weight: bold; border: 1px solid rgba(34, 197, 94, 0.2); }
+        .tag-hora { font-size: 12px; color: #94a3b8; float: right; }
+        
+        .admin-buttons { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-toggle { flex: 1; background: #334155; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; text-align: center; }
+        .btn-toggle:hover { background: #475569; }
+        
+        .admin-section { display: none; margin-top: 20px; border: 1px solid #334155; padding: 20px; border-radius: 10px; background: #0f172a; }
+        .item-config { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; background: #1e293b; padding: 8px; border: 1px solid #334155; border-radius: 6px; }
+        .btn-admin { background: #22c55e; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        .btn-admin:hover { background: #16a34a; }
+        .btn-eliminar-item { background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .btn-eliminar-item:hover { background: #dc2626; }
+        .sin-pedidos { text-align: center; color: #94a3b8; padding: 20px; }
     </style>
 </head>
 <body>
 
-    <h2>Editor Python Online</h2>
-    
-    <div class="container">
-        <textarea id="codeEditor" placeholder="Escribe tu código Python aquí...">print("¡Hola Mundo!")
-for i in range(5):
-    print(f"Número: {i}")</textarea>
-        
-        <div class="toolbar">
-            <button id="runBtn" onclick="runPython()" disabled>▶ Run</button>
-            <button id="stopBtn" onclick="stopPython()" disabled>⏹ Stop</button>
+    <div class="wrapper">
+        <div class="nav-simulator">
+            <span>🌐 Mesa Activa en Simulador:</span>
+            <select id="selectMesa" onchange="cambiarMesaSimulada()">
+                <option value="1">Mesa 1 (Puerto 8081)</option>
+                <option value="2">Mesa 2 (Puerto 8082)</option>
+                <option value="3">Mesa 3 (Puerto 8083)</option>
+            </select>
         </div>
 
-        <div class="output-container">
-            <div class="status" id="statusText">Cargando intérprete de Python (Pyodide)...</div>
-            <pre id="output">Espera un momento mientras se inicializa el entorno...</pre>
+        <div class="card" id="vistaCliente">
+            <h2>🛒 Menú Interactivo</h2>
+            <div class="mesa-badge" id="badgeMesa">📍 Mesa: 1</div>
+            
+            <form onsubmit="enviarPedido(event)">
+                <label for="nombre">Tu Nombre:</label>
+                <input type="text" id="nombreCliente" placeholder="Ej. Carlos" required>
+
+                <div id="contenedorMenuCliente"></div>
+
+                <div class="total-box">
+                    Total: $<span id="totalTexto">0.00</span>
+                </div>
+
+                <button type="submit" class="btn-enviar">Realizar Pedido 🚀</button>
+            </form>
+            <a class="admin-link" onclick="mostrarAdmin()">📊 Ver Panel de Pedidos (Admin)</a>
+        </div>
+
+        <div class="card" id="vistaAdmin" style="display: none;">
+            <h2>🔒 Panel de Control y Pedidos</h2>
+            <p style="text-align:center; font-size: 12px; color: #94a3b8;">(Simulación de hilos y endpoints HTTP en vivo)</p>
+            
+            <div id="authContainer">
+                <label>Contraseña de Administrador (1234):</label>
+                <input type="password" id="adminPassInput" placeholder="Clave admin">
+                <button class="btn-admin" onclick="verificarAdmin()">Ingresar al Panel</button>
+                <a class="volver" onclick="mostrarCliente()">⬅ Volver al menú</a>
+            </div>
+
+            <div id="panelContenido" style="display: none;">
+                <h3>📋 Pedidos en Vivo</h3>
+                <div id="contenedorPedidos"></div>
+                
+                <div class="admin-buttons">
+                    <button class="btn-toggle" onclick="toggleSeccion('seccion-menu')">⚙️ Administrar Menú</button>
+                    <button class="btn-toggle" style="background:#ef4444;" onclick="toggleSeccion('seccion-reinicio')">🗑️ Borrar Pedidos</button>
+                </div>
+
+                <div id="seccion-reinicio" class="admin-section">
+                    <h3 style="color: #ef4444; margin-top:0;">Borrar Todos los Pedidos</h3>
+                    <button onclick="reiniciarPedidos()" style="background:#ef4444;" class="btn-admin">Confirmar Borrado</button>
+                </div>
+
+                <div id="seccion-menu" class="admin-section">
+                    <h3 style="color: #38bdf8; margin-top:0;">Modificar o Agregar Productos</h3>
+                    <div id="contenedorConfigMenu"></div>
+                    <hr style="margin: 20px 0; border:0; border-top:1px solid #334155;">
+                    <p style="font-weight:bold; font-size:13px; color:#cbd5e1;">➕ Agregar Nuevo Producto:</p>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="nuevoClave" placeholder="Clave (ej: pizza)" style="flex:1;">
+                        <input type="text" id="nuevoNombre" placeholder="Nombre" style="flex:2;">
+                        <input type="number" step="0.01" id="nuevoPrecio" placeholder="Precio" style="flex:1;">
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="nuevoSeccion" placeholder="Sección (ej: Platos)" style="flex:2;">
+                        <input type="text" id="nuevoEmoji" placeholder="Emoji (ej: 🍕)" style="flex:1;">
+                    </div>
+                    <button type="button" class="btn-admin" onclick="agregarProducto()">Guardar Producto</button>
+                </div>
+                
+                <a class="volver" onclick="mostrarCliente()">⬅ Volver al menú</a>
+            </div>
         </div>
     </div>
 
     <script>
-        let worker = null;
-        const runBtn = document.getElementById("runBtn");
-        const stopBtn = document.getElementById("stopBtn");
-        const outputPre = document.getElementById("output");
-        const statusText = document.getElementById("statusText");
-        const codeEditor = document.getElementById("codeEditor");
+        // --- ESTADO GLOBAL SIMULADO ---
+        let ADMIN_PASS = "1234";
+        let mesaActual = "1";
+        let PEDIDOS_DB = [];
+        let MENU_DB = {
+            "hamburguesa": {"nombre": "Hamburguesa Clásica", "precio": 5.00, "seccion": "Platos Principales", "emoji": "🍔"},
+            "hotdog": {"nombre": "Hot Dog Especial", "precio": 3.50, "seccion": "Platos Principales", "emoji": "🌭"},
+            "refresco": {"nombre": "Refresco Cola 500ml", "precio": 1.50, "seccion": "Bebidas", "emoji": "🥤"},
+            "jugo": {"nombre": "Jugo Natural de Fresa", "precio": 2.00, "seccion": "Bebidas", "emoji": "🧃"},
+            "tres_leches": {"nombre": "Porción de Tres Leches", "precio": 3.00, "seccion": "Postres", "emoji": "🍰"}
+        };
+        let cantidades = {};
 
-        const workerCode = `
-            importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js");
+        function inicializarCantidades() {
+            cantidades = {};
+            for (let k in MENU_DB) cantidades[k] = 0;
+        }
+        inicializarCantidades();
+
+        function renderizarMenu() {
+            const container = document.getElementById('contenedorMenuCliente');
+            container.innerHTML = '';
             
-            let pyodideReady = false;
-
-            async function init() {
-                self.pyodide = await loadPyodide();
-                pyodideReady = true;
-                postMessage({ type: 'ready' });
+            let secciones = {};
+            for (let k in MENU_DB) {
+                let sec = MENU_DB[k].seccion;
+                if (!secciones[sec]) secciones[sec] = [];
+                secciones[sec].push({clave: k, ...MENU_DB[k]});
             }
-            init();
 
-            onmessage = async (e) => {
-                if (!pyodideReady) return;
-                if (e.data.type === 'run') {
-                    const code = e.data.code;
-                    try {
-                        // Redirigir stdout y evitar errores comunes de hilos en WebAssembly
-                        self.pyodide.runPython(\`
-                            import sys
-                            import io
-                            sys.stdout = io.StringIO()
-                            sys.stderr = io.StringIO()
-                        \`);
-                        
-                        await self.pyodide.runPythonAsync(code);
-                        
-                        let stdout = self.pyodide.runPython("sys.stdout.getvalue()");
-                        let stderr = self.pyodide.runPython("sys.stderr.getvalue()");
-                        let output = stdout + (stderr ? "\\n[Stderr]:\\n" + stderr : "");
-                        
-                        postMessage({ type: 'output', data: output });
-                    } catch (err) {
-                        postMessage({ type: 'output', data: "Error: " + err.message });
-                    }
-                }
-            };
-        `;
-
-        function createWorker() {
-            const blob = new Blob([workerCode], { type: "application/javascript" });
-            worker = new Worker(URL.createObjectURL(blob));
-
-            worker.onmessage = function(e) {
-                if (e.data.type === 'ready') {
-                    statusText.textContent = "Listo para ejecutar";
-                    outputPre.textContent = "Entorno Python listo.";
-                    runBtn.disabled = false;
-                } else if (e.data.type === 'output') {
-                    outputPre.textContent = e.data.data;
-                    resetUI();
-                }
-            };
+            for (let sec in secciones) {
+                container.innerHTML += `<div class="seccion-titulo">${sec}</div>`;
+                secciones[sec].forEach(item => {
+                    container.innerHTML += `
+                        <div class="item-menu">
+                            <div class="item-info">${item.emoji} ${item.nombre}<span>$${item.precio.toFixed(2)}</span></div>
+                            <div class="controles">
+                                <button type="button" onclick="cambiarCant('${item.clave}', -1)">-</button>
+                                <span id="cant_${item.clave}">${cantidades[item.clave] || 0}</span>
+                                <button type="button" onclick="cambiarCant('${item.clave}', 1)">+</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            calcularTotal();
         }
 
-        createWorker();
-
-        function runPython() {
-            outputPre.textContent = "Ejecutando...";
-            statusText.textContent = "Ejecutando código...";
-            runBtn.disabled = true;
-            stopBtn.disabled = false;
-
-            const code = codeEditor.value;
-            worker.postMessage({ type: 'run', code: code });
+        function cambiarCant(clave, cambio) {
+            cantidades[clave] = (cantidades[clave] || 0) + cambio;
+            if (cantidades[clave] < 0) cantidades[clave] = 0;
+            document.getElementById('cant_' + clave).innerText = cantidades[clave];
+            calcularTotal();
         }
 
-        function stopPython() {
-            if (worker) {
-                worker.terminate(); // Mata el hilo de ejecución inmediatamente
-                outputPre.textContent += "\n[Proceso detenido por el usuario]";
-                statusText.textContent = "Ejecución detenida.";
-                resetUI();
-                createWorker(); // Reinicia el worker para futuras ejecuciones
+        function calcularTotal() {
+            let total = 0;
+            for (let k in cantidades) {
+                total += cantidades[k] * (MENU_DB[k] ? MENU_DB[k].precio : 0);
+            }
+            document.getElementById('totalTexto').innerText = total.toFixed(2);
+        }
+
+        function cambiarMesaSimulada() {
+            mesaActual = document.getElementById('selectMesa').value;
+            document.getElementById('badgeMesa').innerText = "📍 Mesa: " + mesaActual;
+            inicializarCantidades();
+            renderizarMenu();
+        }
+
+        function enviarPedido(e) {
+            e.preventDefault();
+            let nombre = document.getElementById('nombreCliente').value;
+            let resumen = [];
+            let total = 0;
+
+            for (let k in cantidades) {
+                if (cantidades[k] > 0) {
+                    let sub = cantidades[k] * MENU_DB[k].precio;
+                    resumen.push(`${cantidades[k]}x ${MENU_DB[k].nombre} ($${sub.toFixed(2)})`);
+                    total += sub;
+                }
+            }
+
+            if (total === 0) {
+                alert("Selecciona al menos un producto.");
+                return;
+            }
+
+            let hora = new Date().toLocaleTimeString('es-VE', {timeZone: 'America/Caracas'});
+            PEDIDOS_DB.push({
+                mesa: mesaActual,
+                nombre: nombre,
+                detalle: resumen.join(', '),
+                total: total.toFixed(2),
+                hora: hora
+            });
+
+            alert("¡Pedido recibido con éxito por el servidor simulado! 🎉");
+            inicializarCantidades();
+            document.getElementById('nombreCliente').value = '';
+            renderizarMenu();
+        }
+
+        function mostrarAdmin() {
+            document.getElementById('vistaCliente').style.display = 'none';
+            document.getElementById('vistaAdmin').style.display = 'block';
+            document.getElementById('authContainer').style.display = 'block';
+            document.getElementById('panelContenido').style.display = 'none';
+        }
+
+        function mostrarCliente() {
+            document.getElementById('vistaAdmin').style.display = 'none';
+            document.getElementById('vistaCliente').style.display = 'block';
+            renderizarMenu();
+        }
+
+        function verificarAdmin() {
+            let pass = document.getElementById('adminPassInput').value;
+            if (pass === ADMIN_PASS) {
+                document.getElementById('authContainer').style.display = 'none';
+                document.getElementById('panelContenido').style.display = 'block';
+                actualizarPanelAdmin();
+            } else {
+                alert("Contraseña incorrecta ❌");
             }
         }
 
-        function resetUI() {
-            runBtn.disabled = false;
-            stopBtn.disabled = true;
-            statusText.textContent = "Listo";
+        function actualizarPanelAdmin() {
+            let contenedor = document.getElementById('contenedorPedidos');
+            if (PEDIDOS_DB.length === 0) {
+                contenedor.innerHTML = '<div class="sin-pedidos">No hay pedidos registrados todavía. 📭</div>';
+            } else {
+                contenedor.innerHTML = '';
+                [...PEDIDOS_DB].reverse().forEach(p => {
+                    contenedor.innerHTML += `
+                        <div class="pedido-card">
+                            <p><span class="tag-mesa">Mesa ${p.mesa}</span> <span class="tag-hora">🕒 ${p.hora}</span> <span class="tag-total">Total: $${p.total}</span></p>
+                            <p><strong>👤 Cliente:</strong> ${p.nombre}</p>
+                            <p><strong>🛍️ Detalle:</strong> ${p.detalle}</p>
+                        </div>
+                    `;
+                });
+            }
+
+            // Renderizar config menú
+            let configMenu = document.getElementById('contenedorConfigMenu');
+            configMenu.innerHTML = '';
+            for (let k in MENU_DB) {
+                configMenu.innerHTML += `
+                    <div class="item-config">
+                        <span>${MENU_DB[k].emoji}</span>
+                        <input type="text" id="nombre_${k}" value="${MENU_DB[k].nombre}" style="flex:2">
+                        <input type="number" step="0.01" id="precio_${k}" value="${MENU_DB[k].precio}" style="flex:1">
+                        <button class="btn-eliminar-item" onclick="eliminarItem('${k}')">🗑️</button>
+                    </div>
+                `;
+            }
         }
+
+        function toggleSeccion(id) {
+            let el = document.getElementById(id);
+            el.style.display = el.style.display === "block" ? "none" : "block";
+        }
+
+        function eliminarItem(clave) {
+            if (confirm("¿Eliminar este producto?")) {
+                delete MENU_DB[clave];
+                inicializarCantidades();
+                actualizarPanelAdmin();
+            }
+        }
+
+        function agregarProducto() {
+            let clave = document.getElementById('nuevoClave').value.trim().toLowerCase().replace(/\s+/g, '_');
+            let nombre = document.getElementById('nuevoNombre').value.trim();
+            let precio = parseFloat(document.getElementById('nuevoPrecio').value);
+            let seccion = document.getElementById('nuevoSeccion').value.trim() || "Otros";
+            let emoji = document.getElementById('nuevoEmoji').value.trim() || "🍽️";
+
+            if (clave && nombre && !isNaN(precio)) {
+                MENU_DB[clave] = {nombre, precio, seccion, emoji};
+                inicializarCantidades();
+                document.getElementById('nuevoClave').value = '';
+                document.getElementById('nuevoNombre').value = '';
+                document.getElementById('nuevoPrecio').value = '';
+                document.getElementById('nuevoSeccion').value = '';
+                document.getElementById('nuevoEmoji').value = '';
+                actualizarPanelAdmin();
+                alert("Producto guardado con éxito ✅");
+            } else {
+                alert("Por favor llena los campos obligatorios correctamente.");
+            }
+        }
+
+        function reiniciarPedidos() {
+            if (confirm("¿Seguro que deseas borrar todos los pedidos?")) {
+                PEDIDOS_DB = [];
+                actualizarPanelAdmin();
+                alert("Pedidos borrados 🗑️");
+            }
+        }
+
+        // Inicializar al cargar
+        renderizarMenu();
     </script>
 </body>
 </html>
